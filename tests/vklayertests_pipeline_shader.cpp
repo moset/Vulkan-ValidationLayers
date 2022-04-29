@@ -4418,6 +4418,112 @@ TEST_F(VkLayerTest, CreatePipelineVertexOutputNotConsumed) {
     CreatePipelineHelper::OneshotTest(*this, set_info, kPerformanceWarningBit, "not consumed by fragment shader");
 }
 
+TEST_F(VkLayerTest, CreatePipelineSpecializedShaderArraySizeIsUsed) {
+    TEST_DESCRIPTION("Test that specialization constants are applied when calculating array sizes");
+
+    ASSERT_NO_FATAL_FAILURE(Init());
+    ASSERT_NO_FATAL_FAILURE(InitRenderTarget());
+
+    char const *csSource = R"glsl(
+        #version 450
+        layout (constant_id = 0) const int num_vars = 8;
+        layout(push_constant) uniform foo {
+           float vars[num_vars];
+        } consts;
+        void main(){
+           vec4 summed = vec4(0);
+           for (int i = 0; i != num_vars; ++i)
+             summed += vec4(consts.vars[i]);
+        }
+    )glsl";
+
+    VkShaderObj cs(this, csSource, VK_SHADER_STAGE_COMPUTE_BIT);
+    const uint32_t kNumVars = 4;
+
+    // Set up a push constant range
+    VkPushConstantRange push_constant_range = {};
+    // Set to the wrong stage to challenge core_validation
+    push_constant_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push_constant_range.size = kNumVars * sizeof(float);
+
+    // Set the specialization constant to 4.
+    const VkSpecializationMapEntry entry = {
+        0,                // id
+        0,                // offset
+        sizeof(uint32_t)  // size
+    };
+    const VkSpecializationInfo specialization_info = {
+        1,
+        &entry,
+        1 * sizeof(uint32_t),
+        &kNumVars,
+    };
+
+    CreateComputePipelineHelper pipe(*this);
+    pipe.InitInfo();
+    pipe.cs_.reset(new VkShaderObj(this, csSource, VK_SHADER_STAGE_COMPUTE_BIT));
+    pipe.cp_ci_.stage.pSpecializationInfo = &specialization_info;
+    pipe.InitState();
+    pipe.pipeline_layout_ = VkPipelineLayoutObj(m_device, {}, {push_constant_range});
+
+    m_errorMonitor->SetDesiredFailureMsg(kErrorBit, "Push constant buffer: member:0");
+    pipe.CreateComputePipeline();
+    m_errorMonitor->VerifyNotFound();
+}
+
+TEST_F(VkLayerTest, CreatePipelineSpecializedShaderCalculatedArraySizeIsUsed) {
+    TEST_DESCRIPTION("Test that specialization constants are applied when calculating array sizes");
+
+    ASSERT_NO_FATAL_FAILURE(Init());
+    ASSERT_NO_FATAL_FAILURE(InitRenderTarget());
+
+    char const *csSource = R"glsl(
+        #version 450
+        layout (constant_id = 0) const int num_vars = 1;
+        layout(push_constant) uniform foo {
+           float vars[num_vars + 1];
+        } consts;
+        void main(){
+           vec4 summed = vec4(0);
+           for (int i = 1; i <= num_vars; ++i)
+             summed += vec4(consts.vars[i]);
+        }
+    )glsl";
+
+    VkShaderObj cs(this, csSource, VK_SHADER_STAGE_COMPUTE_BIT);
+    const uint32_t kNumVars = 10;
+
+    // Set up a push constant range
+    VkPushConstantRange push_constant_range = {};
+    // Set to the wrong stage to challenge core_validation
+    push_constant_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push_constant_range.size = kNumVars * sizeof(float);
+
+    // Set the specialization constant to 4.
+    const VkSpecializationMapEntry entry = {
+        0,                // id
+        0,                // offset
+        sizeof(uint32_t)  // size
+    };
+    const VkSpecializationInfo specialization_info = {
+        1,
+        &entry,
+        1 * sizeof(uint32_t),
+        &kNumVars,
+    };
+
+    CreateComputePipelineHelper pipe(*this);
+    pipe.InitInfo();
+    pipe.cs_.reset(new VkShaderObj(this, csSource, VK_SHADER_STAGE_COMPUTE_BIT));
+    pipe.cp_ci_.stage.pSpecializationInfo = &specialization_info;
+    pipe.InitState();
+    pipe.pipeline_layout_ = VkPipelineLayoutObj(m_device, {}, {push_constant_range});
+
+    m_errorMonitor->SetDesiredFailureMsg(kErrorBit, "Push constant buffer: member:0");
+    pipe.CreateComputePipeline();
+    m_errorMonitor->VerifyNotFound();
+}
+
 TEST_F(VkLayerTest, CreatePipelineCheckShaderSpecializationApplied) {
     TEST_DESCRIPTION(
         "Make sure specialization constants get applied during shader validation by using a value that breaks compilation.");
