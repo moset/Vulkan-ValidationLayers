@@ -465,8 +465,10 @@ void SEMAPHORE_STATE::Retire(QUEUE_STATE *current_queue, uint64_t payload) {
         for (auto &wait : timepoint.wait_ops) {
             completed_ = wait;
         }
-        timepoint.completed.set_value();
-        timeline_.erase(timeline_.begin());
+        while ((!timeline_.empty()) && timeline_.begin()->first <= payload) {
+            timeline_.begin()->second.completed.set_value();
+            timeline_.erase(timeline_.begin());
+        }
         if (scope_ == kSyncScopeExternalTemporary) {
             scope_ = kSyncScopeInternal;
         }
